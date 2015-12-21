@@ -6,5 +6,5 @@ Formatting.formatSettings
 
 Dependencies.core
 
-enablePlugins(ScaladocNoVerificationOfDiagrams)
+// enablePlugins(ScaladocNoVerificationOfDiagrams)
 
