@@ -2,7 +2,6 @@ import com.typesafe.config.ConfigFactory
 import core.Pipeline
 import core.PComponent
 
-import collection.mutable.Stack
 import org.scalatest._
 import core.pcomponents._
 
@@ -15,6 +14,7 @@ class CoreTest extends FlatSpec with Matchers {
       .addComponent("countWords", new WordCountPComponent())
       .addComponent("saveToDisk", ToSink("hdfs:///tmp/out"))
       .connect("readUserData", "source", "countWords", "sink")
+      .compile()
 
   }
   //

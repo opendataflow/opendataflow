@@ -4,6 +4,8 @@ import org.scalatest.{ Matchers, FlatSpec }
 
 import scala.collection.mutable.Stack
 
+// TODO: this is not really a streaming test yet.
+
 class StreamingTest extends FlatSpec with Matchers {
 
   "A Pipeline" should "be built like this" in {

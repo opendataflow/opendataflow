@@ -9,9 +9,11 @@ class Pipeline extends CompositePComponent {
  * Companion object used as factory
  */
 object Pipeline {
-  def create(name: String): Pipeline = {
+  def create(name: String): CompositePComponent.Builder[Pipeline] = {
+
     val p = new Pipeline
     p.setName(name)
-    return p
+    new CompositePComponent.Builder[Pipeline](p)
   }
+
 }

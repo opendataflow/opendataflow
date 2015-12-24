@@ -67,6 +67,14 @@ object PComponent {
     return (name, BeanFactory(c, name))
   }
 
+
+  /**
+    * Bean factory used to build components from config
+    * files
+    * @param c
+    * @param name
+    * @return
+    */
   def BeanFactory(c: Config, name: String): PComponent = {
     if (!c.hasPath("components")) throw new ConfigurationException("No data for 'components'")
     val components = c.getConfig("components")
@@ -92,12 +100,60 @@ object PComponent {
 case class ConfigurationException(s: String) extends Exception(s)
 
 /**
- * Companion object is used to build components.
+ * Companion object is used to build components, chaining
+  * building methods.
  */
 object CompositePComponent {
+  class Builder[A <: CompositePComponent](val p:A) {
+    /**
+      * add component with name.
+      * @param name
+      * @param c
+      * @return
+      */
+    def addComponent(name: String, c: PComponent):Builder[A] = {
+      p.addComponent(name,c)
+      this
+    }
+
+    /**
+      * add component with a tuple
+      * @param c
+      * @return
+      */
+    def addComponent(c: (String, PComponent)):Builder[A] = {
+      p.addComponent(c)
+      this
+    }
+
+    def connect(sourceComponent: String, sout: String,
+                destComponent: String, din: String):Builder[A] = {
+      p.connect(sourceComponent, sout, destComponent, din)
+      this
+    }
+
+    def connect(s:String,d:String):Builder[A] = { p.connect(s,d); this }
+
+    def compile() = {
+      // check that all components are fully connected
+      // that means all sources should all be connected to at least one sink
+      // and every sink to at least one source
+      val er =  p.getPipelineConnectionErrors()
+
+      if (! er.isEmpty) {
+        throw new PipelineException("The pipeline is not completely connected: " +
+          er.map( "\t" + _).mkString("\n"))
+      }
+      this
+    }
+  }
 
 }
 
+/**
+  * base class for all components that are built by composing
+  * other components.
+  */
 abstract class CompositePComponent extends PComponent {
   case class ComponentConnection(source: PComponent, sourceOutput: String, destination: PComponent, destinationInput: String)
 
@@ -107,21 +163,33 @@ abstract class CompositePComponent extends PComponent {
   var components: mutable.Map[String, PComponent] = mutable.HashMap[String, PComponent]()
   var connections = Set[ComponentConnection]()
 
+  /**
+    * Adds a component as subcomponent.
+    * @param name
+    * @param c
+    * @return
+    */
   def addComponent(name: String, c: PComponent): CompositePComponent = {
     c.parent = this
     c.setName(name)
     components.put(name, c)
     return this // allows chaining
   }
+
+  /**
+    * Tuple2 version of addComponent
+    * @param c
+    * @return
+    */
   def addComponent(c: (String, PComponent)): CompositePComponent = {
     return addComponent(c._1, c._2)
   }
 
   /**
-   * Connects one component to another
-   * Connects the output of sourceComponent to the
-   * input of destComponent, throwing an error if incompatible or not existent
-   */
+    * Connects one component to another
+    * Connects the output of sourceComponent to the
+    * input of destComponent, throwing an error if incompatible or not existent
+    */
   def connect(sourceComponent: String, sout: String,
               destComponent: String, din: String): CompositePComponent = {
     // source component
@@ -162,15 +230,44 @@ abstract class CompositePComponent extends PComponent {
   }
 
   /**
-   * abbreviated form that connect source to destination
-   * assuming source has an output named "output" and the
-   * destination has an input named "input"
-   * @param s
-   * @param d
-   */
+    * abbreviated form that connect source to destination
+    * assuming source has an output named "output" and the
+    * destination has an input named "input"
+    * @param s
+    * @param d
+    */
   def connect(s: String, d: String): CompositePComponent = {
     connect(s, "source", d, "sink")
   }
+
+  /**
+   * Returns true if every input and output are in a connection
+   * @return
+   */
+  def getPipelineConnectionErrors(): Seq[String] = {
+    var errors = Seq.empty[String]
+    for ((name, c) ← components if c.isInstanceOf[CompositePComponent]) {
+      val cc = c.asInstanceOf[CompositePComponent]
+      errors ++= cc.getPipelineConnectionErrors() // add pipeline errors as they are found in subcomponents
+
+      for (con ← c.connectors) {
+        // to be connected, every input must be connected to an output and viceversa
+        con match {
+          case i @ InputConnector(n, _, _) ⇒ if (!connections.exists(cc ⇒ cc.destination == c
+            && cc.destinationInput == n)) {
+            errors = errors :+ s"Input component ${c.getComponentPathAsString()} has its input ${n} disconnected"
+          }
+          case o @ OutputConnector(n, _, _) ⇒ if (!connections.exists(cc ⇒ cc.source == c
+            && cc.sourceOutput == n)) {
+            errors = errors :+ s"Output component ${c.getComponentPathAsString()} has its ouptu ${n} disconnected"
+          }
+        }
+      }
+    }
+    return errors
+  }
+
+
 
 }
 
