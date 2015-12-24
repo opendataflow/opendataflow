@@ -19,6 +19,7 @@ class PComponentTest extends FlatSpec with Matchers {
        */
       override def run(): Unit = {}
     }
+    pc.setName("comp1")
     val ic = InputConnector("myin", new FileBasedData, "")
     val oc = OutputConnector("myout", new FileBasedData, "")
     pc.addConnector(ic)
@@ -26,6 +27,19 @@ class PComponentTest extends FlatSpec with Matchers {
 
     pc.getInput("myin") shouldEqual (Some(ic))
     pc.getOutput("myout") shouldEqual (Some(oc))
+
+    pc.getComponentPathAsString() shouldEqual ("comp1")
+
+    val comp = new CompositePComponent {
+      addComponent(pc.name, pc)
+      /**
+       * run method is the one that actually performs the work
+       */
+      override def run(): Unit = {}
+    }
+    comp.setName("container")
+    pc.getComponentPathAsString() shouldEqual ("container/comp1")
+    comp.getComponentPathAsString() shouldEqual ("container")
 
   }
 

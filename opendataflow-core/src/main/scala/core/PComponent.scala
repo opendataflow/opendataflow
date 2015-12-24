@@ -16,6 +16,8 @@ abstract class PConnector(
 case class InputConnector(s: String, d: AbstractData, desc: String = "Input") extends PConnector(s, d, desc)
 case class OutputConnector(s: String, d: AbstractData, desc: String = "Output") extends PConnector(s, d, desc)
 
+
+
 abstract class PComponent {
 
   @BeanProperty
@@ -51,8 +53,9 @@ abstract class PComponent {
     case _    ⇒ parent.getComponentPath :+ this
   }
   // Return the component path as a string
-  def getComponentPathAsString(sep: String = "/") = getComponentPath.mkString(sep)
-  override def toString = getComponentPathAsString()
+  def getComponentPathAsString(sep: String = "/") = getComponentPath.map( _.name ).mkString(sep)
+
+  override def toString = getComponentPathAsString() + ":" + super.toString
 
   /**
    * run method is the one that actually performs the work
@@ -62,6 +65,10 @@ abstract class PComponent {
 }
 
 object PComponent {
+
+  val DEFAULT_SOURCE_STRING = "source"
+  val DEFAULT_SINK_STRING   = "sink"
+
   def fromConfig(c: Config, name: String): (String, PComponent) = {
 
     return (name, BeanFactory(c, name))
@@ -104,7 +111,12 @@ case class ConfigurationException(s: String) extends Exception(s)
   * building methods.
  */
 object CompositePComponent {
-  class Builder[A <: CompositePComponent](val p:A) {
+  class BuildOptions {
+    @BeanProperty
+    var autoConnect = true
+  }
+
+  class Builder[A <: CompositePComponent](val p:A, val options:BuildOptions = new BuildOptions()) {
     /**
       * add component with name.
       * @param name
@@ -113,7 +125,29 @@ object CompositePComponent {
       */
     def addComponent(name: String, c: PComponent):Builder[A] = {
       p.addComponent(name,c)
+
+      // now c is the last
+      if(options.autoConnect && (p.components.size > 1)) {
+        autoConnect(p.components.get(p.components.length - 2 ), p.components.last )
+      }
+
       this
+    }
+
+    /**
+      * connects a components source to the others' sink,
+      * if they are present with their default names.
+      *
+      * @param tail
+      * @param nw
+      * @return
+      */
+    def autoConnect(tail:PComponent , nw:PComponent ) = {
+      import PComponent.{DEFAULT_SINK_STRING,DEFAULT_SOURCE_STRING}
+      (tail.getInput(DEFAULT_SOURCE_STRING), nw.getOutput(DEFAULT_SINK_STRING)) match {
+        case (Some(a),Some(b)) => connect(tail.getName(),nw.getName())
+        case _ => // do nothing if either source or sink missing
+      }
     }
 
     /**
@@ -122,8 +156,7 @@ object CompositePComponent {
       * @return
       */
     def addComponent(c: (String, PComponent)):Builder[A] = {
-      p.addComponent(c)
-      this
+      addComponent(c._1, c._2)
     }
 
     def connect(sourceComponent: String, sout: String,
@@ -141,7 +174,7 @@ object CompositePComponent {
       val er =  p.getPipelineConnectionErrors()
 
       if (! er.isEmpty) {
-        throw new PipelineException("The pipeline is not completely connected: " +
+        throw new PipelineException("The pipeline is not completely connected: \n" +
           er.map( "\t" + _).mkString("\n"))
       }
       this
@@ -160,7 +193,7 @@ abstract class CompositePComponent extends PComponent {
   /**
    * inner components are designated by a name, that has to be unique within the component
    */
-  var components: mutable.Map[String, PComponent] = mutable.HashMap[String, PComponent]()
+  var components  = Seq[PComponent]()
   var connections = Set[ComponentConnection]()
 
   /**
@@ -170,9 +203,22 @@ abstract class CompositePComponent extends PComponent {
     * @return
     */
   def addComponent(name: String, c: PComponent): CompositePComponent = {
-    c.parent = this
     c.setName(name)
-    components.put(name, c)
+    addComponent(c)
+  }
+
+  def addComponent(c:PComponent) : CompositePComponent = {
+    if(c.getName == null) {
+      throw new PipelineException(s"Supplied a component with a null name to ${this.getComponentPathAsString()}")
+    }
+    // throw exception if trying to add component with an already existent name
+    components.find( x=> x.name == name) match {
+      case Some(_) => throw new PipelineException(s"Component ${name} already present in ${this.getComponentPathAsString()}")
+      case None =>
+    }
+
+    c.parent = this
+    components  = components :+ c
     return this // allows chaining
   }
 
@@ -185,6 +231,10 @@ abstract class CompositePComponent extends PComponent {
     return addComponent(c._1, c._2)
   }
 
+  def getComponentByName(s:String):Option[PComponent] = {
+    components.find( _.name == s )
+  }
+
   /**
     * Connects one component to another
     * Connects the output of sourceComponent to the
@@ -193,7 +243,7 @@ abstract class CompositePComponent extends PComponent {
   def connect(sourceComponent: String, sout: String,
               destComponent: String, din: String): CompositePComponent = {
     // source component
-    val sc = components.get(sourceComponent).
+    val sc = getComponentByName(sourceComponent).
       getOrElse(throw new PipelineException(s"No such component ${sourceComponent} "))
 
     val sd = sc.getInput(sout) match {
@@ -202,7 +252,7 @@ abstract class CompositePComponent extends PComponent {
     }
 
     // destination component
-    val dc = components.get(destComponent).
+    val dc = getComponentByName(destComponent).
       getOrElse(throw new PipelineException(s"No such component ${destComponent} "))
 
     // same for output
@@ -221,9 +271,11 @@ abstract class CompositePComponent extends PComponent {
     // b.getClass.isAssignableFrom(a.getClass)
     // Boolean = false
 
-    if (!dd.getClass.isAssignableFrom(sd.getClass))
+    if (!dd.getClass.isAssignableFrom(sd.getClass)) {
       throw new PipelineException(s"Destination Data ${destComponent}/${din} is of type ${dd.getClass.getName}  " +
         s"which is not a  superclass of Source ${sourceComponent}/${sout} of type ${sd.getClass.getName}")
+    }
+
     connections = connections + ComponentConnection(sc, sout, dc, din)
 
     return this
@@ -237,8 +289,10 @@ abstract class CompositePComponent extends PComponent {
     * @param d
     */
   def connect(s: String, d: String): CompositePComponent = {
-    connect(s, "source", d, "sink")
+    connect(s, PComponent.DEFAULT_SOURCE_STRING, d, PComponent.DEFAULT_SINK_STRING)
   }
+
+
 
   /**
    * Returns true if every input and output are in a connection
@@ -246,20 +300,21 @@ abstract class CompositePComponent extends PComponent {
    */
   def getPipelineConnectionErrors(): Seq[String] = {
     var errors = Seq.empty[String]
-    for ((name, c) ← components if c.isInstanceOf[CompositePComponent]) {
-      val cc = c.asInstanceOf[CompositePComponent]
-      errors ++= cc.getPipelineConnectionErrors() // add pipeline errors as they are found in subcomponents
+    for (c ← components) {
+      if(c.isInstanceOf[CompositePComponent]) {
+        errors ++= c.asInstanceOf[CompositePComponent].getPipelineConnectionErrors() // add pipeline errors as they are found in subcomponents
+      }
 
       for (con ← c.connectors) {
         // to be connected, every input must be connected to an output and viceversa
         con match {
-          case i @ InputConnector(n, _, _) ⇒ if (!connections.exists(cc ⇒ cc.destination == c
-            && cc.destinationInput == n)) {
-            errors = errors :+ s"Input component ${c.getComponentPathAsString()} has its input ${n} disconnected"
-          }
-          case o @ OutputConnector(n, _, _) ⇒ if (!connections.exists(cc ⇒ cc.source == c
+          case i @ InputConnector(n, _, _) ⇒ if (!connections.exists(cc ⇒ cc.source == c
             && cc.sourceOutput == n)) {
-            errors = errors :+ s"Output component ${c.getComponentPathAsString()} has its ouptu ${n} disconnected"
+            errors = errors :+ s"Input component ${c.getComponentPathAsString()} has its connector ${n} disconnected"
+          }
+          case o @ OutputConnector(n, _, _) ⇒ if (!connections.exists(cc ⇒ cc.destination == c
+            && cc.destinationInput == n)) {
+            errors = errors :+ s"Output component ${c.getComponentPathAsString()} has its connector ${n} disconnected"
           }
         }
       }
