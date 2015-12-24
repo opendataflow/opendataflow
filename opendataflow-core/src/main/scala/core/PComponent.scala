@@ -302,7 +302,8 @@ abstract class CompositePComponent extends PComponent {
     var errors = Seq.empty[String]
     for (c ← components) {
       if(c.isInstanceOf[CompositePComponent]) {
-        errors ++= c.asInstanceOf[CompositePComponent].getPipelineConnectionErrors() // add pipeline errors as they are found in subcomponents
+        // add pipeline errors as they are found in subcomponents
+        errors ++= c.asInstanceOf[CompositePComponent].getPipelineConnectionErrors()
       }
 
       for (con ← c.connectors) {
@@ -321,9 +322,6 @@ abstract class CompositePComponent extends PComponent {
     }
     return errors
   }
-
-
-
 }
 
 class PipelineException(msg: String) extends Exception(msg)

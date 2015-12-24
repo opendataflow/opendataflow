@@ -29,12 +29,6 @@ class CoreTest extends FlatSpec with Matchers {
     }
 
   }
-  //
-  //  it should "throw IncompletePipelineException if missing connections" in {
-  //    val emptyStack = new Stack[Int]
-  //    a[NoSuchElementException] should be thrownBy {
-  //      emptyStack.pop()
-  //    }
-  //  }
+
 }
 
