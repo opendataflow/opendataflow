@@ -1,6 +1,7 @@
 import core.Pipeline
 import core.pcomponents.{ FromSource, ToSink }
 import org.scalatest.{ Matchers, FlatSpec }
+import test.WordCountPComponent
 
 import scala.collection.mutable.Stack
 

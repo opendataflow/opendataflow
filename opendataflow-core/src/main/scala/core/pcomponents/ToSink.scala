@@ -13,7 +13,6 @@ class ToSink extends PComponent {
 
   @BeanProperty
   var url: String = null
-
   addConnector(OutputConnector("sink", new BoundData, "Writes data somewhere"))
 
   override def run: Unit = ???

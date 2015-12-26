@@ -102,6 +102,7 @@ object OpenDataFlowBuild extends Build {
     /**
      * Test settings
      */
+   // parallelExecution in Test := false,
 
     // show full stack traces and test case durations
     testOptions in Test += Tests.Argument("-oDF"),

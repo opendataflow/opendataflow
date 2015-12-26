@@ -2,7 +2,8 @@ package core
 
 import java.util
 
-import com.typesafe.config.{ ConfigFactory, ConfigBeanFactory, Config }
+import com.typesafe.config.{ConfigValue, ConfigFactory, ConfigBeanFactory, Config}
+import org.apache.hadoop.hdfs.server.namenode.HostFileManager.EntrySet
 import scala.beans.BeanProperty
 import core.data._
 import collection.JavaConversions._
@@ -19,13 +20,11 @@ case class OutputConnector(s: String, d: AbstractData, desc: String = "Output") 
 
 
 abstract class PComponent {
-
   @BeanProperty
   var name: String = ""
 
   // Set not supported by BeanFactory
   var connectors = Set[PConnector]()
-
   var parent: CompositePComponent = null.asInstanceOf[CompositePComponent]
 
   def getInput(name: String): Option[InputConnector] = getConnector(name,
@@ -41,7 +40,6 @@ abstract class PComponent {
    * Add a connector to the set
    * @param c
    */
-
   def addConnector(c: PConnector) = connectors += c
   /**
    * returns a sequence with the complete path of the component,
@@ -65,13 +63,11 @@ abstract class PComponent {
 }
 
 object PComponent {
-
   val DEFAULT_SOURCE_STRING = "source"
   val DEFAULT_SINK_STRING   = "sink"
 
   def fromConfig(c: Config, name: String): (String, PComponent) = {
-
-    return (name, BeanFactory(c, name))
+    return (name, buildComponent(c, name))
   }
 
 
@@ -82,7 +78,8 @@ object PComponent {
     * @param name
     * @return
     */
-  def BeanFactory(c: Config, name: String): PComponent = {
+  def buildComponent(c: Config, name: String): PComponent = {
+    println("Building " + name)
     if (!c.hasPath("components")) throw new ConfigurationException("No data for 'components'")
     val components = c.getConfig("components")
     if (!components.hasPath(name)) throw new ConfigurationException(s"No data for component ${name}")
@@ -100,11 +97,22 @@ object PComponent {
     } else {
       throw new ConfigurationException(s"Class ${cla} is not assignable from ${PComponent.getClass}")
     }
+  }
 
+  /**
+    * Build all components specified under the "components" key in configuration
+    * @param c
+    * @return
+    */
+  def buildComponents(c:Config): Seq[PComponent] = {
+    if (!c.hasPath("components")) throw new ConfigurationException("No data for 'components'")
+    import collection.JavaConversions._
+    c.getObject("components").keySet().map( buildComponent(c,_)).toSeq
   }
 }
 
 case class ConfigurationException(s: String) extends Exception(s)
+
 
 /**
  * Companion object is used to build components, chaining
@@ -115,7 +123,6 @@ object CompositePComponent {
     @BeanProperty
     var autoConnect = true
   }
-
   class Builder[A <: CompositePComponent](val p:A, val options:BuildOptions = new BuildOptions()) {
     /**
       * add component with name.
@@ -123,15 +130,27 @@ object CompositePComponent {
       * @param c
       * @return
       */
-    def addComponent(name: String, c: PComponent):Builder[A] = {
-      p.addComponent(name,c)
+    def addComponent(name: String, c: PComponent): Builder[A] = {
+      p.addComponent(name, c)
 
       // now c is the last
-      if(options.autoConnect && (p.components.size > 1)) {
-        autoConnect(p.components.get(p.components.length - 2 ), p.components.last )
+      if (options.autoConnect && (p.components.size > 1)) {
+        autoConnect(p.components.get(p.components.length - 2), p.components.last)
       }
-
       this
+    }
+
+    /**
+      * add component with a tuple
+      * @param c
+      * @return
+      */
+    def addComponent(c: (String, PComponent)): Builder[A] = {
+      addComponent(c._1, c._2)
+    }
+
+    def addComponent(c: PComponent): Builder[A] = {
+      addComponent(c.name, c)
     }
 
     /**
@@ -142,59 +161,90 @@ object CompositePComponent {
       * @param nw
       * @return
       */
-    def autoConnect(tail:PComponent , nw:PComponent ) = {
-      import PComponent.{DEFAULT_SINK_STRING,DEFAULT_SOURCE_STRING}
+    def autoConnect(tail: PComponent, nw: PComponent) = {
+      import PComponent.{DEFAULT_SINK_STRING, DEFAULT_SOURCE_STRING}
       (tail.getInput(DEFAULT_SOURCE_STRING), nw.getOutput(DEFAULT_SINK_STRING)) match {
-        case (Some(a),Some(b)) => connect(tail.getName(),nw.getName())
+        case (Some(a), Some(b)) => connect(tail.getName(), nw.getName())
         case _ => // do nothing if either source or sink missing
       }
     }
 
-    /**
-      * add component with a tuple
-      * @param c
-      * @return
-      */
-    def addComponent(c: (String, PComponent)):Builder[A] = {
-      addComponent(c._1, c._2)
+
+    def connect( cc:ComponentConnection): Builder[A] = {
+      p.connections.add(cc)
+      this
     }
 
     def connect(sourceComponent: String, sout: String,
-                destComponent: String, din: String):Builder[A] = {
+                destComponent: String, din: String): Builder[A] = {
       p.connect(sourceComponent, sout, destComponent, din)
       this
     }
 
-    def connect(s:String,d:String):Builder[A] = { p.connect(s,d); this }
+    def connect(s: String, d: String): Builder[A] = {
+      p.connect(s, d); this
+    }
 
-    def compile() = {
+    def compile(): A = {
       // check that all components are fully connected
       // that means all sources should all be connected to at least one sink
       // and every sink to at least one source
-      val er =  p.getPipelineConnectionErrors()
+      val er = p.getPipelineConnectionErrors()
 
-      if (! er.isEmpty) {
+      if (!er.isEmpty) {
         throw new PipelineException("The pipeline is not completely connected: \n" +
-          er.map( "\t" + _).mkString("\n"))
+          er.map("\t" + _).mkString("\n"))
       }
-      this
+      this.p
+    }
+
+
+    def buildConnection(v: Config): ComponentConnection = {
+      def splitNotation(s: String, d: String): (String, String) = {
+        val v = s.split(":")
+        if (v.size > 2) throw new PipelineException(s"Bad connection point ${s}")
+        if (v.size == 2) (v(0), v(1)) else (v(0), d)
+      }
+
+      val (from, source) = if (v.hasPath("from")) {
+        splitNotation(v.getString("from"), PComponent.DEFAULT_SOURCE_STRING)
+      } else throw new PipelineException("missing from")
+
+      val (to, sink) = if (v.hasPath("to")) {
+        splitNotation(v.getString("to"), PComponent.DEFAULT_SINK_STRING)
+      } else throw new PipelineException("missing to")
+
+      return new ComponentConnection(p.getComponentByName(from).getOrElse(
+          throw new PipelineException(s"Non-existent component : ${from} in ${p.getComponentPathAsString()}")),
+        source, p.getComponentByName(to).getOrElse(
+          throw new PipelineException(s"Non-existent component : ${to} in ${p.getComponentPathAsString()}")),
+        sink)
+    }
+
+    def buildConnections(c: Config): Seq[ComponentConnection] = {
+      if (!c.hasPath("connections")) return Seq.empty[ComponentConnection]
+      import collection.JavaConversions._
+      c.getConfigList("connections").map(buildConnection(_)).toSeq
     }
   }
 
 }
+
+
+case class ComponentConnection(source: PComponent, sourceOutput: String,
+                               destination: PComponent, destinationInput: String)
 
 /**
   * base class for all components that are built by composing
   * other components.
   */
 abstract class CompositePComponent extends PComponent {
-  case class ComponentConnection(source: PComponent, sourceOutput: String, destination: PComponent, destinationInput: String)
 
   /**
    * inner components are designated by a name, that has to be unique within the component
    */
-  var components  = Seq[PComponent]()
-  var connections = Set[ComponentConnection]()
+  private var _components  = Seq[PComponent]()
+  var connections = mutable.Set[ComponentConnection]()
 
   /**
     * Adds a component as subcomponent.
@@ -206,6 +256,9 @@ abstract class CompositePComponent extends PComponent {
     c.setName(name)
     addComponent(c)
   }
+
+  def components = _components
+  def components_=(value:Seq[PComponent]):Unit = _components = value
 
   def addComponent(c:PComponent) : CompositePComponent = {
     if(c.getName == null) {
@@ -276,7 +329,7 @@ abstract class CompositePComponent extends PComponent {
         s"which is not a  superclass of Source ${sourceComponent}/${sout} of type ${sd.getClass.getName}")
     }
 
-    connections = connections + ComponentConnection(sc, sout, dc, din)
+    connections.add( ComponentConnection(sc, sout, dc, din))
 
     return this
   }

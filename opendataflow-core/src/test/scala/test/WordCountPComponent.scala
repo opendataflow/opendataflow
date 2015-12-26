@@ -1,5 +1,7 @@
-import core.{ OutputConnector, InputConnector, PComponent }
+package test
+
 import core.data.BoundData
+import core.{ InputConnector, OutputConnector, PComponent }
 
 class WordCountPComponent extends PComponent {
 
