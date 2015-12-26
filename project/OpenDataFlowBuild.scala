@@ -26,6 +26,18 @@ object OpenDataFlowBuild extends Build {
     base = file("opendataflow-core")
   )
 
+  lazy val odwspark = Project(
+    id="opendataflow-spark",
+    base = file("opendataflow-spark"),
+    dependencies = Seq(core)
+  )
+
+  lazy val cli = Project(
+    id = "opendataflow-cli",
+    base = file("opendataflow-cli"),
+    dependencies = Seq(core)
+  )
+
   override lazy val settings =
     super.settings ++
     buildSettings ++

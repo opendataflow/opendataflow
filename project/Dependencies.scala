@@ -100,7 +100,8 @@ object Dependencies {
   import Compile._
 
   val l = libraryDependencies
-  val core = l ++= Seq(config, sparkCore, sparkSql.value, Test.scalatest.value)
-
+  val core = l ++= Seq(config, Test.scalatest.value)
+  val odfspark = l ++= Seq(config, sparkCore, sparkSql.value, Test.scalatest.value)
+  val cli = l ++= Seq(config, Test.scalatest.value)
 }
 

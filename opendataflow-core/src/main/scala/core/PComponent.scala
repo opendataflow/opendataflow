@@ -3,7 +3,6 @@ package core
 import java.util
 
 import com.typesafe.config.{ConfigValue, ConfigFactory, ConfigBeanFactory, Config}
-import org.apache.hadoop.hdfs.server.namenode.HostFileManager.EntrySet
 import scala.beans.BeanProperty
 import core.data._
 import collection.JavaConversions._
