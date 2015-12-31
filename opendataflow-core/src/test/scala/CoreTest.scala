@@ -29,7 +29,6 @@ class CoreTest extends FlatSpec with Matchers {
     val config = ConfigFactory.load("pipeline1")
     val p2 = Pipeline.fromConfig(config).compile()
     assertResult(3)(p.components.length)
-
   }
 
   "An incomplete pipeline" should "throw an exception when compiled" in {

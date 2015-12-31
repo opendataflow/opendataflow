@@ -35,6 +35,7 @@ object Dependencies {
       "org.apache.spark" %% "spark-streaming" % sparkVersion.value % "compile"
     }
 
+    val scopt = "com.github.scopt" %% "scopt" % "3.3.0"
 
     object Docs {
       val sprayJson = "io.spray" %% "spray-json" % "1.3.2" % "test"
@@ -102,6 +103,6 @@ object Dependencies {
   val l = libraryDependencies
   val core = l ++= Seq(config, Test.scalatest.value)
   val odfspark = l ++= Seq(config, sparkCore, sparkSql.value, Test.scalatest.value)
-  val cli = l ++= Seq(config, Test.scalatest.value)
+  val cli = l ++= Seq(config, scopt, Test.scalatest.value)
 }
 

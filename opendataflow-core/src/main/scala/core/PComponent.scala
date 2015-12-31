@@ -35,6 +35,12 @@ abstract class PComponent {
     connectors.find { p ⇒ fn(p) && p.name == name }
   }
 
+  // utility methods
+  def getInputConnectors():Set[InputConnector] = connectors.filter(
+    _.isInstanceOf[InputConnector]).map( x => x.asInstanceOf[InputConnector])
+  def getOutputConnectors():Set[OutputConnector] = connectors.filter(
+    _.isInstanceOf[OutputConnector]).map( x => x.asInstanceOf[OutputConnector])
+
   /**
    * Add a connector to the set
    * @param c
@@ -78,7 +84,6 @@ object PComponent {
     * @return
     */
   def buildComponent(c: Config, name: String): PComponent = {
-    println("Building " + name)
     if (!c.hasPath("components")) throw new ConfigurationException("No data for 'components'")
     val components = c.getConfig("components")
     if (!components.hasPath(name)) throw new ConfigurationException(s"No data for component ${name}")

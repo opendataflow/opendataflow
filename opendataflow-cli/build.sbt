@@ -7,3 +7,5 @@ Formatting.formatSettings
 Dependencies.cli
 
 // enablePlugins(ScaladocNoVerificationOfDiagrams)
+
+resolvers +=  Resolver.sonatypeRepo("public")

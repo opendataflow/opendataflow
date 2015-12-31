@@ -9,7 +9,7 @@ package core.data
  * In Spark, UnboundData would be a DStream
  * and BoundData would be DataFrames.
  */
-abstract class AbstractData {
+class AbstractData {
 
 }
 

@@ -18,7 +18,7 @@ object OpenDataFlowBuild extends Build {
     base = file("."),
     settings = parentSettings , 
 
-    aggregate = Seq(core)
+    aggregate = Seq(core, cli)
   )
 
   lazy val core = Project(
