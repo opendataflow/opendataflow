@@ -31,9 +31,10 @@ abstract class PComponent {
   def getOutput(name: String): Option[OutputConnector] = getConnector(name,
     { p: PConnector ⇒ p.isInstanceOf[OutputConnector] }).map { _.asInstanceOf[OutputConnector] }
 
-  def getConnector(name: String, fn: PConnector ⇒ Boolean): Option[PConnector] = {
+  def getConnector(name: String, fn: PConnector ⇒ Boolean = (x) => true): Option[PConnector] = {
     connectors.find { p ⇒ fn(p) && p.name == name }
   }
+
 
   // utility methods
   def getInputConnectors():Set[InputConnector] = connectors.filter(

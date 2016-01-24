@@ -18,7 +18,7 @@ object OpenDataFlowBuild extends Build {
     base = file("."),
     settings = parentSettings , 
 
-    aggregate = Seq(core, cli)
+    aggregate = Seq(core, cli, odfspark)
   )
 
   lazy val core = Project(
@@ -26,7 +26,7 @@ object OpenDataFlowBuild extends Build {
     base = file("opendataflow-core")
   )
 
-  lazy val odwspark = Project(
+  lazy val odfspark = Project(
     id="opendataflow-spark",
     base = file("opendataflow-spark"),
     dependencies = Seq(core)

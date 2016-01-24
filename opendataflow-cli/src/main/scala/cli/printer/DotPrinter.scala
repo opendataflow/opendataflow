@@ -31,13 +31,17 @@ class DotPrinter extends Printer {
         w.write(sanitizeName(c.getComponentPathAsString()) + " [shape=box,label=\"" + c.getName() + "\"];\n")
         c.connectors.foreach { cn ⇒
           val id = getConnectorId(c, cn)
-          w.write(id + "[style=dotted, label=\"" + cn.getName() + "\"];\n")
+          w.write(id + "[style=dotted, label=\"" + cn.getName() + ":" + cn.data.getClass.getSimpleName + "\"];\n")
           cn match {
             case ic: InputConnector  ⇒ w.write(s"${getComponentId(c)} -> ${id};\n")
             case oc: OutputConnector ⇒ w.write(s"${id} -> ${getComponentId(c)};\n")
           }
         }
     }
+  }
+
+  private def getConnectionId(conn: ComponentConnection) = {
+    getConnectorId(conn.source, conn.sourceOutput) + "_" + getConnectorId(conn.destination, conn.destinationInput)
   }
 
   private def getConnectorId(p: PComponent, c: PConnector): String = {

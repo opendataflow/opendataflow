@@ -33,6 +33,7 @@ object Main {
       case Some(config) ⇒ cmd match {
         case "print" ⇒ doPrint(config)
         case "graph" ⇒ doGraph(config)
+        case "run"   ⇒ doRun(config)
       }
 
       case None ⇒
@@ -63,6 +64,10 @@ object Main {
 
   def doGraph(c: CliConfig) = {
     doPrint(c.copy(printer = "dot"))
+  }
+
+  def doRun(c: CliConfig) = {
+
   }
 
 }
