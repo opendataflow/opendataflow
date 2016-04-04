@@ -23,32 +23,30 @@ class DotPrinter extends Printer {
         cc.components.foreach { x ⇒ renderComponent(x, w, options) }
 
         cc.connections.foreach { conn ⇒
-          w.write(s"   ${getConnectorId(conn.source, conn.sourceOutput)} -> ${getConnectorId(conn.destination, conn.destinationInput)} ;\n")
+          w.write(s"   ${getConnectorId(conn.source)} -> ${getConnectorId(conn.destination)} ;\n")
         }
 
         w.write("}\n")
       case c: PComponent ⇒
-        w.write(sanitizeName(c.getComponentPathAsString()) + " [shape=box,label=\"" + c.getName() + "\"];\n")
-        c.connectors.foreach { cn ⇒
-          val id = getConnectorId(c, cn)
-          w.write(id + "[style=dotted, label=\"" + cn.getName() + ":" + cn.data.getClass.getSimpleName + "\"];\n")
-          cn match {
-            case ic: InputConnector  ⇒ w.write(s"${getComponentId(c)} -> ${id};\n")
-            case oc: OutputConnector ⇒ w.write(s"${id} -> ${getComponentId(c)};\n")
-          }
+        w.write(sanitizeName(c.getComponentPathAsString()) + " [shape=box,label=\"" + c.getName + "\"];\n")
+        c.connectors.foreach {
+          case (name: String, cn: PConnector) ⇒
+            val id = getConnectorId(cn)
+            w.write(id + "[style=dotted, label=\"" + cn.getName() + ":" + cn.data.getClass.getSimpleName + "\"];\n")
+            cn match {
+              case ic: InputConnector  ⇒ w.write(s"${getComponentId(c)} -> ${id};\n")
+              case oc: OutputConnector ⇒ w.write(s"${id} -> ${getComponentId(c)};\n")
+            }
         }
     }
   }
 
-  private def getConnectionId(conn: ComponentConnection) = {
-    getConnectorId(conn.source, conn.sourceOutput) + "_" + getConnectorId(conn.destination, conn.destinationInput)
+  private def getConnectionId(conn: CConnection) = {
+    getConnectorId(conn.source) + "_" + getConnectorId(conn.destination)
   }
 
-  private def getConnectorId(p: PComponent, c: PConnector): String = {
-    sanitizeName(p.getComponentPathAsString() + "_" + c.getName)
-  }
-  private def getConnectorId(p: PComponent, c: String): String = {
-    getConnectorId(p, p.getConnector(c, x ⇒ x.getName == c).get)
+  private def getConnectorId(c: PConnector): String = {
+    sanitizeName(c.getId)
   }
 
   private def getComponentId(p: PComponent) = sanitizeName(p.getComponentPathAsString())

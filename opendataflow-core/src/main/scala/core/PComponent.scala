@@ -1,61 +1,110 @@
 package core
 
-import java.util
-
-import com.typesafe.config.{ConfigValue, ConfigFactory, ConfigBeanFactory, Config}
-import scala.beans.BeanProperty
+import com.typesafe.config.{Config, ConfigBeanFactory, ConfigFactory}
 import core.data._
-import collection.JavaConversions._
+
+import scala.annotation.tailrec
+import scala.beans.BeanProperty
+import scala.collection.JavaConversions._
 import scala.collection._
+import scala.reflect.ClassTag
+import org.slf4j.LoggerFactory
+
+
+/**
+  * A Connector represents an input or output
+  * in that a components provides.
+  * The name must be unique within the component.
+  *
+  * @param name
+  * @param data
+  * @param description
+  */
 
 abstract class PConnector(
   @BeanProperty var name: String,
   @BeanProperty var data: AbstractData,
-  @BeanProperty var description: String = null)
+  @BeanProperty var description: String = null,
+  @BeanProperty var optional:Boolean = false) {
+  var component:PComponent = null
+  def getId = {
+    if (component == null) "*undefined*"
+    else
+    component.getComponentPathAsString() + ":" + name
+  }
+}
 
-case class InputConnector(s: String, d: AbstractData, desc: String = "Input") extends PConnector(s, d, desc)
-case class OutputConnector(s: String, d: AbstractData, desc: String = "Output") extends PConnector(s, d, desc)
-
+case class InputConnector( n: String, d: AbstractData, desc: String = "Input")  extends PConnector(n, d, desc)
+case class OutputConnector(n: String, d: AbstractData, desc: String = "Output") extends PConnector(n, d, desc)
 
 
 abstract class PComponent {
-  @BeanProperty
+  // name is used to compose the id.
   var name: String = ""
 
-  // Set not supported by BeanFactory
-  var connectors = Set[PConnector]()
-  var parent: CompositePComponent = null.asInstanceOf[CompositePComponent]
+  @BeanProperty
+  def setName(s:String) = if (s.contains("/"))
+    throw new Exception(s"Can't have slash in component name ${s}")
+  else name = s
+  def getName = name
 
-  def getInput(name: String): Option[InputConnector] = getConnector(name,
+  // Set not supported by BeanFactory
+  var connectors = Map[String, PConnector]()
+  var parent: CompositePComponent = null.asInstanceOf[CompositePComponent]
+  
+  def getConnector(name: String, fn: PConnector ⇒ Boolean = (x) => true): Option[PConnector] = {
+    connectors.get(name)
+  }
+
+  def getInputConnector(name: String): Option[InputConnector] = getConnector(name,
     { p: PConnector ⇒ p.isInstanceOf[InputConnector] }).map { _.asInstanceOf[InputConnector] }
-  def getOutput(name: String): Option[OutputConnector] = getConnector(name,
+  def getOutputConnector(name: String): Option[OutputConnector] = getConnector(name,
     { p: PConnector ⇒ p.isInstanceOf[OutputConnector] }).map { _.asInstanceOf[OutputConnector] }
 
-  def getConnector(name: String, fn: PConnector ⇒ Boolean = (x) => true): Option[PConnector] = {
-    connectors.find { p ⇒ fn(p) && p.name == name }
-  }
 
 
   // utility methods
-  def getInputConnectors():Set[InputConnector] = connectors.filter(
-    _.isInstanceOf[InputConnector]).map( x => x.asInstanceOf[InputConnector])
-  def getOutputConnectors():Set[OutputConnector] = connectors.filter(
-    _.isInstanceOf[OutputConnector]).map( x => x.asInstanceOf[OutputConnector])
+  def getInputConnectors():Set[InputConnector] = connectors.values.seq.filter(
+    _.isInstanceOf[InputConnector]).map( x => x.asInstanceOf[InputConnector]).toSet
+  def getOutputConnectors():Set[OutputConnector] = connectors.values.seq.filter(
+    _.isInstanceOf[OutputConnector]).map( x => x.asInstanceOf[OutputConnector]).toSet
+
 
   /**
    * Add a connector to the set
-   * @param c
+    *
+    * @param c
    */
-  def addConnector(c: PConnector) = connectors += c
+  def addConnector(c: PConnector) = {
+    if (c.component != null) throw new Exception("Connector already assigned")
+    c.component = this
+    connectors +=  c.name -> c
+  }
+  def addConnectors(comps:PConnector*):Unit = comps.map { addConnector(_) }
+
+
+  def findConnector(p:(PConnector) => Boolean):Option[PConnector] = {
+    connectors.values.seq.find(p)
+  }
+
   /**
    * returns a sequence with the complete path of the component,
    * starting from root, and this as last element
-   * @return
+    *
+    * @return
    */
   def getComponentPath: Seq[PComponent] = parent match {
     case null ⇒ Seq(this)
     case _    ⇒ parent.getComponentPath :+ this
   }
+
+  /**
+    * Returns the component ID as a slash separated path
+    * of strings, with the path through all the parent coponents
+    * @return
+    */
+  def getId:String = getComponentPathAsString()
+
   // Return the component path as a string
   def getComponentPathAsString(sep: String = "/") = getComponentPath.map( _.name ).mkString(sep)
 
@@ -80,6 +129,7 @@ object PComponent {
   /**
     * Bean factory used to build components from config
     * files
+    *
     * @param c
     * @param name
     * @return
@@ -106,6 +156,7 @@ object PComponent {
 
   /**
     * Build all components specified under the "components" key in configuration
+    *
     * @param c
     * @return
     */
@@ -128,14 +179,18 @@ object CompositePComponent {
     @BeanProperty
     var autoConnect = true
   }
-  class Builder[A <: CompositePComponent](val p:A, val options:BuildOptions = new BuildOptions()) {
+
+  class Builder[A <: CompositePComponent](val p: A, val options: BuildOptions = new BuildOptions()) {
+    val LOG = LoggerFactory.getLogger(this.getClass)
     /**
       * add component with name.
+      *
       * @param name
       * @param c
       * @return
       */
     def addComponent(name: String, c: PComponent): Builder[A] = {
+      LOG.debug(s"Adding component ${name}")
       p.addComponent(name, c)
 
       // now c is the last
@@ -147,6 +202,7 @@ object CompositePComponent {
 
     /**
       * add component with a tuple
+      *
       * @param c
       * @return
       */
@@ -167,15 +223,23 @@ object CompositePComponent {
       * @return
       */
     def autoConnect(tail: PComponent, nw: PComponent) = {
-      import PComponent.{DEFAULT_SINK_STRING, DEFAULT_SOURCE_STRING}
-      (tail.getInput(DEFAULT_SOURCE_STRING), nw.getOutput(DEFAULT_SINK_STRING)) match {
-        case (Some(a), Some(b)) => connect(tail.getName(), nw.getName())
-        case _ => // do nothing if either source or sink missing
-      }
+      for {
+        a <- tail.findConnector(_.isInstanceOf[OutputConnector])
+        b <- nw.findConnector(_.isInstanceOf[InputConnector])
+      } yield connect(a.asInstanceOf[OutputConnector],b.asInstanceOf[InputConnector])
+
     }
 
 
-    def connect( cc:ComponentConnection): Builder[A] = {
+    /**
+      * main connect method.
+      * Other connect methods call this one
+      * and are just adapters
+      * @param cc
+      * @return
+      */
+    def connect(cc: CConnection): Builder[A] = {
+      LOG.debug(s"Connecting ${cc.source.getId} to ${cc.destination.getId}")
       p.connections.add(cc)
       this
     }
@@ -186,8 +250,11 @@ object CompositePComponent {
       this
     }
 
+    def connect(s:OutputConnector, d:InputConnector) = p.connect(s,d)
+
     def connect(s: String, d: String): Builder[A] = {
-      p.connect(s, d); this
+      p.connect(s, d)
+      this
     }
 
     def compile(): A = {
@@ -204,55 +271,43 @@ object CompositePComponent {
     }
 
 
-    def buildConnection(v: Config): ComponentConnection = {
-      def splitNotation(s: String, d: String): (String, String) = {
-        val v = s.split(":")
-        if (v.size > 2) throw new PipelineException(s"Bad connection point ${s}")
-        if (v.size == 2) (v(0), v(1)) else (v(0), d)
-      }
-
-      val (from, source) = if (v.hasPath("from")) {
-        splitNotation(v.getString("from"), PComponent.DEFAULT_SOURCE_STRING)
-      } else throw new PipelineException("missing from")
-
-      val (to, sink) = if (v.hasPath("to")) {
-        splitNotation(v.getString("to"), PComponent.DEFAULT_SINK_STRING)
-      } else throw new PipelineException("missing to")
-
-      return new ComponentConnection(p.getComponentByName(from).getOrElse(
-          throw new PipelineException(s"Non-existent component : ${from} in ${p.getComponentPathAsString()}")),
-        source, p.getComponentByName(to).getOrElse(
-          throw new PipelineException(s"Non-existent component : ${to} in ${p.getComponentPathAsString()}")),
-        sink)
+    def buildConnection(v: Config): Option[CConnection] = {
+      for {
+        from <- p.getConnectorById[OutputConnector](v.getString("from"))
+        to <- p.getConnectorById[InputConnector](v.getString("to"))
+      } yield new CConnection(from, to)
     }
 
-    def buildConnections(c: Config): Seq[ComponentConnection] = {
-      if (!c.hasPath("connections")) return Seq.empty[ComponentConnection]
+    def buildConnections(c: Config): Seq[CConnection] = {
+      if (!c.hasPath("connections")) return Seq.empty[CConnection]
       import collection.JavaConversions._
-      c.getConfigList("connections").map(buildConnection(_)).toSeq
+      c.getConfigList("connections").map { cc =>
+        buildConnection(cc) match {
+          case Some(x: CConnection) => x
+          case None => throw new Exception(s"Can't build connection from config for config ${cc.toString}")
+        }
+      }
     }
   }
-
 }
 
 
-case class ComponentConnection(source: PComponent, sourceOutput: String,
-                               destination: PComponent, destinationInput: String)
+case class CConnection(val source:OutputConnector, val destination:InputConnector)
 
 /**
   * base class for all components that are built by composing
   * other components.
   */
 abstract class CompositePComponent extends PComponent {
-
   /**
    * inner components are designated by a name, that has to be unique within the component
    */
   private var _components  = Seq[PComponent]()
-  var connections = mutable.Set[ComponentConnection]()
+  var connections = mutable.Set[CConnection]()
 
   /**
     * Adds a component as subcomponent.
+    *
     * @param name
     * @param c
     * @return
@@ -282,6 +337,7 @@ abstract class CompositePComponent extends PComponent {
 
   /**
     * Tuple2 version of addComponent
+    *
     * @param c
     * @return
     */
@@ -294,67 +350,137 @@ abstract class CompositePComponent extends PComponent {
   }
 
   /**
+    * finds a connector, looking into subcomponents if necessary
+    *
+    * @param p
+    * @return
+    */
+  override def findConnector( p:(PConnector) => Boolean):Option[PConnector] = {
+    super.findConnector(p) match {
+      case Some(s) => Some(s)
+      case None =>
+        @tailrec
+        def findRec(c:Seq[PComponent]):Option[PConnector] = {
+          c.head.findConnector(p) match {
+            case Some(s) => Some(s)
+            case None => findRec(c.tail)
+          }
+        }
+        if(components.isEmpty) None
+        else findRec(components)
+    }
+  }
+
+  /**
+    * Finds a component using its full path
+    * /one/two/three
+    *
+    * returns None if any of the components in the
+    * path do not exist.
+    *
+    * @param s : ID of component
+    * @return
+    */
+  def getComponentById(s:String): Option[PComponent] = {
+    val sep = "/"
+    val path = s.split(sep).toList
+
+    path match {
+      case Nil => Some(this)
+      case head :: tail => tail match {
+        case Nil => getComponentByName(head)
+        case _ => for {
+                      c <- getComponentByName(head)
+                        if c.isInstanceOf[CompositePComponent]
+                      comp <- c.asInstanceOf[CompositePComponent].getComponentById(tail.mkString(sep))
+        } yield comp
+      }
+    }
+  }
+
+
+  /**
+    * finds a connector by ID, following path through subcomponents.
+    *
+    * @param s
+    * @return
+    */
+  def getConnectorById[T <: PConnector](s:String )(implicit tag:ClassTag[T]):Option[T] = {
+    // if the id is not component:connector then assume
+    // it's the default
+    if(! s.contains(":")) {
+      getConnectorById[T](s + ":" + getDefaultConnectorName[T](tag) )
+    } else {
+      val parts = s.split(":")
+      if (parts.length != 2) throw new Exception(s"Malformed id ${s}, should be path/to/my/component:connector")
+
+      for {
+        component <- getComponentById(parts.head)
+        con: PConnector <- component.getConnector(parts.last)
+      } yield con.asInstanceOf[T]
+    }
+  }
+
+
+  def getDefaultConnectorName[T <: PConnector](implicit tag:ClassTag[T]):String = {
+    if( classOf[OutputConnector].isAssignableFrom(tag.runtimeClass)) return PComponent.DEFAULT_SOURCE_STRING
+    if( classOf[InputConnector].isAssignableFrom(tag.runtimeClass)) return PComponent.DEFAULT_SINK_STRING
+    throw new Exception
+  }
+
+  /**
     * Connects one component to another
     * Connects the output of sourceComponent to the
     * input of destComponent, throwing an error if incompatible or not existent
     */
   def connect(sourceComponent: String, sout: String,
               destComponent: String, din: String): CompositePComponent = {
-    // source component
-    val sc = getComponentByName(sourceComponent).
-      getOrElse(throw new PipelineException(s"No such component ${sourceComponent} "))
+   val c =    for {
+      sco <- getConnectorById[OutputConnector](s"${sourceComponent}:${sout}").
+        orElse( throw new Exception(s"Cannot find ${sourceComponent}:${sout}" ))
+      dco <- getConnectorById[InputConnector](s"${destComponent}:${din}").
+        orElse( throw new Exception(s"Cannot find ${sourceComponent}:${sout}" ))
+      if dco.getData.getClass.isAssignableFrom(sco.getData.getClass)
+    }  yield CConnection(sco.asInstanceOf[OutputConnector], dco.asInstanceOf[InputConnector])
 
-    val sd = sc.getInput(sout) match {
-      case None    ⇒ throw new PipelineException(s"No such output '${sout}' for component ${sc.name}")
-      case Some(s) ⇒ s.getData
+    c match {
+      case Some(con) => addConnection(con)
+      case None => throw new Exception(s"Can't connect ${sourceComponent}:${sout} and ${destComponent}:${din}, their data may not be compatible.")
     }
-
-    // destination component
-    val dc = getComponentByName(destComponent).
-      getOrElse(throw new PipelineException(s"No such component ${destComponent} "))
-
-    // same for output
-    val dd = dc.getOutput(din) match {
-      case None    ⇒ throw new PipelineException(s"No such input '${din}' for component ${dc.name}")
-      case Some(s) ⇒ s.getData
-    }
-
-    // the destination must be a superclass of the source.
-    // for instance, we can connect a FileBased source to an OffsetBased destination
-    // but not viceversa. That is, the receiving side decides which class
-    // can accept.
-    // if  A is a class and B extends A, a = new A and b = new B
-    // a.getClass.isAssignableFrom(b.getClass)
-    // Boolean = true
-    // b.getClass.isAssignableFrom(a.getClass)
-    // Boolean = false
-
-    if (!dd.getClass.isAssignableFrom(sd.getClass)) {
-      throw new PipelineException(s"Destination Data ${destComponent}/${din} is of type ${dd.getClass.getName}  " +
-        s"which is not a  superclass of Source ${sourceComponent}/${sout} of type ${sd.getClass.getName}")
-    }
-
-    connections.add( ComponentConnection(sc, sout, dc, din))
 
     return this
   }
 
+  def connect(s:OutputConnector,d:InputConnector) =  addConnection(CConnection(s,d))
+  def addConnection(con:CConnection) =  connections.add(con)
   /**
     * abbreviated form that connect source to destination
     * assuming source has an output named "output" and the
     * destination has an input named "input"
+    *
     * @param s
     * @param d
     */
   def connect(s: String, d: String): CompositePComponent = {
-    connect(s, PComponent.DEFAULT_SOURCE_STRING, d, PComponent.DEFAULT_SINK_STRING)
+    val con = for {
+      in <- getConnectorById[OutputConnector](s)
+      out <- getConnectorById[InputConnector](d)
+    }  yield new CConnection(in,out)
+
+    con match {
+      case Some(x) => addConnection(x)
+      case None => throw new Exception(s"Cannot connect ${s} to ${d}")
+    }
+
+    this
   }
 
 
 
   /**
    * Returns true if every input and output are in a connection
-   * @return
+    *
+    * @return
    */
   def getPipelineConnectionErrors(): Seq[String] = {
     var errors = Seq.empty[String]
@@ -364,16 +490,14 @@ abstract class CompositePComponent extends PComponent {
         errors ++= c.asInstanceOf[CompositePComponent].getPipelineConnectionErrors()
       }
 
-      for (con ← c.connectors) {
+      for (con ← c.connectors.values.seq) {
         // to be connected, every input must be connected to an output and viceversa
         con match {
-          case i @ InputConnector(n, _, _) ⇒ if (!connections.exists(cc ⇒ cc.source == c
-            && cc.sourceOutput == n)) {
-            errors = errors :+ s"Input component ${c.getComponentPathAsString()} has its connector ${n} disconnected"
+          case i @ InputConnector(n, _, _) ⇒ if (!connections.exists(_.destination == i)) {
+            errors = errors :+ s"Input Connector ${i.getId} not connected"
           }
-          case o @ OutputConnector(n, _, _) ⇒ if (!connections.exists(cc ⇒ cc.destination == c
-            && cc.destinationInput == n)) {
-            errors = errors :+ s"Output component ${c.getComponentPathAsString()} has its connector ${n} disconnected"
+          case o @ OutputConnector(n, _, _) ⇒ if (!connections.exists(_.source == o)) {
+            errors = errors :+ s"Output component ${o.getId} not connected"
           }
         }
       }

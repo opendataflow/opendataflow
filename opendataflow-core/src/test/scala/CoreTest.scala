@@ -13,7 +13,7 @@ class CoreTest extends FlatSpec with Matchers {
       .addComponent(PComponent.fromConfig(config, "readUserData")) // FromSource
       .addComponent("countWords", new WordCountPComponent())
       .addComponent("saveToDisk", ToSink("hdfs:///tmp/out"))
-      .connect("readUserData", "source", "countWords", "sink")
+      .connect("readUserData", PComponent.DEFAULT_SOURCE_STRING, "countWords", PComponent.DEFAULT_SINK_STRING)
       // one connection is done automatically, since pipeline will connect source->sink with the same name
       .compile()
 

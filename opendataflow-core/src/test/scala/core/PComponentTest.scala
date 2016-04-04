@@ -25,8 +25,8 @@ class PComponentTest extends FlatSpec with Matchers {
     pc.addConnector(ic)
     pc.addConnector(oc)
 
-    pc.getInput("myin") shouldEqual (Some(ic))
-    pc.getOutput("myout") shouldEqual (Some(oc))
+    pc.getInputConnector("myin") shouldEqual (Some(ic))
+    pc.getOutputConnector("myout") shouldEqual (Some(oc))
 
     pc.getComponentPathAsString() shouldEqual ("comp1")
 

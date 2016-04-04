@@ -36,6 +36,7 @@ object Dependencies {
     }
 
     val scopt = "com.github.scopt" %% "scopt" % "3.3.0"
+    val slf4j = "org.slf4j" % "slf4j-api" % "1.7.12"
 
     object Docs {
       val sprayJson = "io.spray" %% "spray-json" % "1.3.2" % "test"
@@ -88,7 +89,8 @@ object Dependencies {
       // sigar logging
       val slf4jJul = "org.slf4j" % "jul-to-slf4j" % "1.7.12" % "test"
       // MIT
-      val slf4jLog4j = "org.slf4j" % "log4j-over-slf4j" % "1.7.12" % "test" // MIT
+      val slf4jLog4j =  "org.slf4j" % "log4j-over-slf4j" % "1.7.12" % "test" //
+      val slf4jSimple = "org.slf4j" % "slf4j-simple" % "1.7.12" % "test "
     }
 
 
@@ -101,8 +103,8 @@ object Dependencies {
   import Compile._
 
   val l = libraryDependencies
-  val core = l ++= Seq(config, Test.scalatest.value)
-  val odfspark = l ++= Seq(config, sparkCore, sparkSql.value, Test.scalatest.value)
-  val cli = l ++= Seq(config, scopt, Test.scalatest.value)
+  val core = l ++= Seq(config, slf4j ,  Test.scalatest.value, Test.slf4jSimple)
+  val odfspark = l ++= Seq(config, sparkCore, sparkSql.value, Test.scalatest.value, Test.slf4jLog4j)
+  val cli = l ++= Seq(config, slf4j, scopt, Test.scalatest.value, Test.slf4jSimple)
 }
 

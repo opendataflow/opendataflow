@@ -29,8 +29,8 @@ object Pipeline {
 
     for (con ← b.buildConnections(c)) {
       con match {
-        case cc: ComponentConnection ⇒ b.connect(cc)
-        case _                       ⇒
+        case cc: CConnection ⇒ b.connect(cc)
+        case _               ⇒
       }
     }
 

@@ -8,8 +8,8 @@ import core.{ InputConnector, OutputConnector, PComponent }
  */
 class Ident extends PComponent {
 
-  addConnector(OutputConnector("sink", new AbstractData, "Writes data somewhere"))
-  addConnector(InputConnector("source", new AbstractData, "Reads data from somewhere"))
+  addConnector(InputConnector("sink", new AbstractData, "Writes data somewhere"))
+  addConnector(OutputConnector("source", new AbstractData, "Reads data from somewhere"))
   /**
    * run method is the one that actually performs the work
    */

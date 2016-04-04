@@ -15,7 +15,7 @@ class PlainTextPrinter extends Printer {
     w.flush()
   }
 
-  def renderComponent(c: PComponent, indent: Int, w: OutputStreamWriter, cnn: Set[ComponentConnection] = Set.empty): Unit = {
+  def renderComponent(c: PComponent, indent: Int, w: OutputStreamWriter, cnn: Set[CConnection] = Set.empty): Unit = {
     // closure to print indented
     def p(s: String) = { w.write("  " * indent + s + "\n") }
     p("-" * 50)
@@ -25,9 +25,9 @@ class PlainTextPrinter extends Printer {
       c.getInputConnectors().map { x ⇒
         renderConnector(x, indent + 1, w)
         if (!cnn.isEmpty) {
-          val mycnn = cnn.filter(p ⇒ p.source == c && p.sourceOutput == x.getName)
+          val mycnn = cnn.filter(p ⇒ p.source == c)
           if (!mycnn.isEmpty) p(s"Connected to " +
-            mycnn.map { f ⇒ f.destination.getComponentPath + ":" + f.destinationInput }.mkString(", "))
+            mycnn.map { f ⇒ f.destination.getId }.mkString(", "))
         }
       }
     }
@@ -36,9 +36,9 @@ class PlainTextPrinter extends Printer {
       c.getOutputConnectors().map { x ⇒
         renderConnector(x, indent + 1, w)
         if (!cnn.isEmpty) {
-          val mycnn = cnn.filter(p ⇒ p.source == c && p.sourceOutput == x.getName)
+          val mycnn = cnn.filter(p ⇒ p.source == c)
           if (!mycnn.isEmpty) p(s"Connected to " +
-            mycnn.map { f ⇒ f.destination.getComponentPath + ":" + f.destinationInput }.mkString(", "))
+            mycnn.map { f ⇒ f.destination.getId }.mkString(", "))
         }
       }
     }

@@ -1,6 +1,6 @@
 package core.pcomponents
 
-import core.{ InputConnector, PComponent }
+import core.{ OutputConnector, InputConnector, PComponent }
 import core.data.FileBasedData
 
 import scala.beans.BeanProperty
@@ -9,7 +9,7 @@ class FromSource extends PComponent {
   @BeanProperty
   var url: String = null
 
-  addConnector(InputConnector("source", new FileBasedData, "Read data from a source"))
+  addConnector(OutputConnector(PComponent.DEFAULT_SOURCE_STRING, new FileBasedData, "Read data from a source"))
 
   override def run: Unit = ???
 }

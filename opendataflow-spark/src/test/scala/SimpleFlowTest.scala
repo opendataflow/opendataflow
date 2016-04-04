@@ -17,8 +17,8 @@ class SimpleFlowTest extends FlatSpec with Matchers {
 
     // engine will instantiate all the delegates
     // for each task
-    val job = se.createJob(p, ConfigFactory.parseString(""" """))
-    val res = se.submit(job)
+    //val job = se.createJob(p, ConfigFactory.parseString(""" """))
+    //val res = se.submit(job)
 
   }
 }
